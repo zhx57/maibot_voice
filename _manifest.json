@@ -1,0 +1,36 @@
+{
+  "manifest_version": 2,
+  "id": "maibot-community.maibot-mimotts-voice",
+  "name": "MiMo TTS Voice Clone",
+  "version": "1.0.0",
+  "description": "MiMo TTS Voice Clone Plugin for MaiBot - AI语音回复插件，支持自定义音色克隆和风格控制",
+  "author": {
+    "name": "MaiBot社区",
+    "url": "https://github.com/MaiM-with-u"
+  },
+  "license": "MIT",
+  "urls": {
+    "repository": "https://github.com/MaiM-with-u/ai-voice-plugin",
+    "homepage": "https://github.com/MaiM-with-u/ai-voice-plugin"
+  },
+  "host_application": {
+    "min_version": "1.0.0",
+    "max_version": "1.0.0"
+  },
+  "sdk": {
+    "min_version": "2.0.0",
+    "max_version": "2.99.99"
+  },
+  "dependencies": [],
+  "capabilities": [
+    "send.text",
+    "send.custom",
+    "send.record",
+    "message.get_by_id",
+    "chat.get_all_streams"
+  ],
+  "i18n": {
+    "default_locale": "zh-CN",
+    "supported_locales": ["zh-CN"]
+  }
+}
