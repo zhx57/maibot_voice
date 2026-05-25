@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from maibot_sdk import API, CONFIG_RELOAD_SCOPE_SELF, MaiBotPlugin, Tool, Field, PluginConfigBase
-from maibot_sdk.types import ToolParameterInfo, ToolParamType
+from maibot_sdk.types import ActivationType, ToolParameterInfo, ToolParamType
 
 try:
     from .tts_service import MiMoTTSService
@@ -263,9 +263,11 @@ class AIVoicePlugin(MaiBotPlugin):
         detailed_description=(
             "使用语音进行回复。当用户要求语音、用户发送了语音消息、回复简短适合口语时使用。"
             "只需提供回复文本和消息ID即可，系统会自动找到正确的聊天流并使用配置的默认音色。"
+            "你认为纯文本过长时需要用到语音回复以减小刷屏时可以调用此工具"
             "参数: reply_text(必填,回复文本), msg_id(必填,当前消息的ID), "
             "style_instruction(可选,风格指令如'用温柔语气说')"
         ),
+        activation_type=ActivationType.ALWAYS,
         parameters=[
             ToolParameterInfo(name="reply_text", param_type=ToolParamType.STRING, description="回复文本", required=True),
             ToolParameterInfo(name="msg_id", param_type=ToolParamType.STRING, description="当前消息ID", required=True),

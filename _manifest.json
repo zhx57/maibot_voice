@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "id": "Emilia-awa.maibot-mimotts-voice",
   "name": "MiMo TTS Voice Clone",
-  "version": "1.0.0",
+  "version": "1.5.2",
   "description": "MiMo TTS Voice Clone Plugin for MaiBot - AI语音回复插件，支持自定义音色克隆和风格控制",
   "author": {
     "name": "Emilia-awa",
