@@ -84,28 +84,28 @@ clone_voice = ""
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `emotion` | 情绪枚举（留空自动） | - |
+| `emotion` | 情绪枚举 happy/sad/angry/fearful/disgusted/surprised/calm/fluent/whisper（留空自动；fluent/whisper 仅 2.6 系列支持） | - |
 | `speed` | 语速 [0.5, 2] | `1.0` |
 | `vol` | 音量 (0, 10] | `1.0` |
-| `pitch` | 音调 [-12, 12] | `0` |
+| `pitch` | 音调 [-12, 12] 整数 | `0` |
+| `english_normalization` | 英文文本归一化 | `false` |
 
 ### 音频设置
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `audio_format` | 音频格式：`mp3`/`wav`/`flac`/`pcm` | `mp3` |
-| `audio_sample_rate` | 采样率 | `32000` |
-| `bitrate` | 比特率（仅 mp3） | `128000` |
-| `channel` | 声道 1 或 2 | `2` |
+| `audio_format` | 音频格式：`mp3`/`pcm`/`flac`/`wav`/`pcmu_raw`/`pcmu_wav`/`opus` | `mp3` |
+| `audio_sample_rate` | 采样率 [8000,16000,22050,24000,32000,44100] | `32000` |
+| `bitrate` | 比特率 [32000,64000,128000,256000]（仅 mp3） | `128000` |
+| `channel` | 声道 [1,2] | `2` |
 
 ### 其他
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `language_boost` | 语种识别增强 | `auto` |
-| `aigc_watermark` | AIGC 水印 | `false` |
-| `subtitle_enabled` | 生成字幕 | `false` |
-| `poll_interval` | 轮询间隔（秒） | `1.0` |
+| `language_boost` | 语种识别增强 auto 或具体语种 | `auto` |
+| `aigc_watermark` | AIGC 水印（仅非流式生效） | `false` |
+| `poll_interval` | 轮询间隔（秒，≥1.0） | `1.0` |
 | `poll_max_wait` | 最大轮询等待（秒） | `120` |
 | `max_retries` | 最大重试次数 | `3` |
 | `retry_backoff_base` | 重试退避基数 | `1.5` |

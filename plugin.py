@@ -32,17 +32,17 @@ class VoiceSectionConfig(PluginConfigBase):
     voices_dir: str = Field(default="voices", description="音色目录路径（相对于插件目录）")
     default_voice: str = Field(default="", description="默认音色名称（clone模式下为音频文件名）")
     clone_voice: str = Field(default="", description="复刻音色文件名（clone模式下优先使用）")
-    emotion: str = Field(default="", description="情绪枚举，留空则由style_instruction映射或自动")
+    emotion: str = Field(default="", description="情绪枚举 happy/sad/angry/fearful/disgusted/surprised/calm/fluent/whisper，留空自动；fluent/whisper 仅 speech-2.6 系列支持")
     speed: float = Field(default=1.0, description="语速 [0.5, 2]")
     vol: float = Field(default=1.0, description="音量 (0, 10]")
-    pitch: int = Field(default=0, description="音调 [-12, 12]")
-    audio_format: str = Field(default="mp3", description="音频格式: mp3/wav/flac/pcm")
-    audio_sample_rate: int = Field(default=32000, description="采样率")
-    bitrate: int = Field(default=128000, description="比特率（仅mp3生效）")
-    channel: int = Field(default=2, description="声道 1或2")
-    language_boost: str = Field(default="auto", description="语种识别增强")
-    aigc_watermark: bool = Field(default=False, description="是否添加AIGC水印")
-    subtitle_enabled: bool = Field(default=False, description="是否生成字幕")
+    pitch: int = Field(default=0, description="音调 [-12, 12] 整数，0 为原音色")
+    english_normalization: bool = Field(default=False, description="英文文本归一化（提升数字阅读，略增延迟）")
+    audio_format: str = Field(default="mp3", description="音频格式: mp3/pcm/flac/wav/pcmu_raw/pcmu_wav/opus")
+    audio_sample_rate: int = Field(default=32000, description="采样率 [8000,16000,22050,24000,32000,44100]")
+    bitrate: int = Field(default=128000, description="比特率 [32000,64000,128000,256000]，仅 mp3 生效")
+    channel: int = Field(default=2, description="声道 [1,2]，1 单声道/2 双声道")
+    language_boost: str = Field(default="auto", description="语种识别增强 auto 或具体语种")
+    aigc_watermark: bool = Field(default=False, description="AIGC 水印（仅非流式生效）")
     poll_interval: float = Field(default=1.0, description="轮询间隔(秒)")
     poll_max_wait: float = Field(default=120, description="最大轮询等待时长(秒)")
     max_retries: int = Field(default=3, description="最大重试次数")
@@ -320,12 +320,19 @@ class AIVoicePlugin(MaiBotPlugin):
 
     def _map_style(self, style_instruction: str) -> tuple[str, dict]:
         """将 style_instruction 自然语言映射为 (emotion, voice_modify)。
-        返回 (emotion字符串可能为空, voice_modify字典)。"""
+        返回 (emotion字符串可能为空, voice_modify字典)。
+        注意 emotion 兼容性：fluent/whisper 仅 speech-2.6 系列支持，
+        speech-2.8 系列不支持 whisper，故对不兼容的情绪降级为空（让模型自动匹配）。"""
         emotion = ""
         voice_modify: dict[str, Any] = {}
         if not style_instruction:
             return emotion, voice_modify
         text = style_instruction.lower()
+        model = self.config.voice.model
+        # whisper 仅 speech-2.6-turbo / speech-2.6-hd 支持
+        whisper_supported = model in ("speech-2.6-turbo", "speech-2.6-hd")
+        # fluent 仅 speech-2.6-turbo / speech-2.6-hd 支持
+        fluent_supported = model in ("speech-2.6-turbo", "speech-2.6-hd")
         # emotion 映射
         emotion_map = [
             (["温柔", "安慰", "温暖", "calm", "gentle", "soft"], "calm"),
@@ -335,8 +342,8 @@ class AIVoicePlugin(MaiBotPlugin):
             (["害怕", "恐惧", "fear", "afraid"], "fearful"),
             (["厌恶", "嫌弃", "disgust"], "disgusted"),
             (["惊讶", "惊喜", "surprise"], "surprised"),
-            (["低语", "耳语", "whisper"], "whisper"),
-            (["流畅", "自然", "fluent", "natural"], "fluent"),
+            (["低语", "耳语", "whisper"], "whisper" if whisper_supported else ""),
+            (["流畅", "自然", "fluent", "natural"], "fluent" if fluent_supported else ""),
         ]
         for keywords, emo in emotion_map:
             if any(k in text for k in keywords):
@@ -388,7 +395,11 @@ class AIVoicePlugin(MaiBotPlugin):
             emotion, voice_modify = self._map_style(style_instruction)
             # 配置的 emotion 优先于映射（若用户在配置中显式设置了 emotion）
             final_emotion = self.config.voice.emotion or emotion
-            # 组装 voice_setting
+            # emotion 模型兼容性校验：fluent/whisper 仅 speech-2.6 系列支持
+            if final_emotion in ("fluent", "whisper") and self.config.voice.model not in ("speech-2.6-turbo", "speech-2.6-hd"):
+                self.ctx.logger.warning("emotion '%s' not supported by model '%s', dropping (need speech-2.6 series)", final_emotion, self.config.voice.model)
+                final_emotion = ""
+            # 组装 voice_setting（对照官方 T2AAsyncV2VoiceSetting）
             voice_setting: dict[str, Any] = {
                 "voice_id": voice_id,
                 "speed": self.config.voice.speed,
@@ -397,14 +408,16 @@ class AIVoicePlugin(MaiBotPlugin):
             }
             if final_emotion:
                 voice_setting["emotion"] = final_emotion
-            # 组装 audio_setting
+            if self.config.voice.english_normalization:
+                voice_setting["english_normalization"] = True
+            # 组装 audio_setting（对照官方 T2AAsyncV2AudioSetting）
             audio_setting: dict[str, Any] = {
                 "audio_sample_rate": self.config.voice.audio_sample_rate,
                 "bitrate": self.config.voice.bitrate,
                 "format": self.config.voice.audio_format,
                 "channel": self.config.voice.channel,
             }
-            # voice_modify 兼容性校验：仅 mp3/wav/flac 支持
+            # voice_modify 兼容性校验：仅 mp3/wav/flac 支持（pcm/pcmu_*/opus 不支持）
             if voice_modify and self.config.voice.audio_format not in ("mp3", "wav", "flac"):
                 self.ctx.logger.warning("voice_modify ignored: format %s not supported (need mp3/wav/flac)", self.config.voice.audio_format)
                 voice_modify = {}
@@ -416,7 +429,6 @@ class AIVoicePlugin(MaiBotPlugin):
                 language_boost=self.config.voice.language_boost or None,
                 voice_modify=voice_modify or None,
                 aigc_watermark=self.config.voice.aigc_watermark,
-                subtitle_enabled=self.config.voice.subtitle_enabled,
             )
             success = result.get("success")
             error = result.get("error", "")

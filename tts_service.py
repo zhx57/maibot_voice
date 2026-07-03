@@ -91,9 +91,14 @@ class MiniMaxAsyncTTSService:
         "speech-02-hd", "speech-02-turbo",
         "speech-01-hd", "speech-01-turbo",
     }
-    SUPPORTED_FORMATS = {"mp3", "wav", "flac", "pcm"}
+    # 官方 T2AAsyncV2AudioSetting.format 枚举
+    SUPPORTED_FORMATS = {"mp3", "pcm", "flac", "wav", "pcmu_raw", "pcmu_wav", "opus"}
+    # 官方文档 t2a_async_v2 错误码：1002 限流、1004 鉴权失败、1039 TPM限流、1042 非法字符超10%、2013 参数错误
+    # 1001(超时) 为通用瞬时错误，按可重试处理
     RETRYABLE_CODES = {1001, 1002, 1039}
     FATAL_CODES = {1004, 1008, 1042, 2013, 2038}
+    # voice_modify 仅支持以下格式（官方 VoiceModify 说明）
+    VOICE_MODIFY_FORMATS = {"mp3", "wav", "flac"}
     QUERY_MAX_QPS = 10  # 查询接口每秒最多 10 次
     MIN_POLL_INTERVAL = 1.0  # 轮询间隔至少 1 秒
 
@@ -176,13 +181,16 @@ class MiniMaxAsyncTTSService:
         language_boost: Optional[str] = None,
         voice_modify: Optional[dict] = None,
         aigc_watermark: bool = False,
-        subtitle_enabled: bool = False,
     ) -> dict[str, Any]:
         """调用 POST /v1/t2a_async_v2 创建任务。
 
         成功返回 ``{"task_id":..., "file_id":..., "usage_characters":...}``，
         失败返回 ``{"success": False, "error":..., "code":...}``。
         对 retryable 错误按指数退避重试 max_retries 次。
+
+        注意：payload 仅包含官方 T2AAsyncV2Req schema 定义的字段
+        (model/text/voice_setting/audio_setting/pronunciation_dict/language_boost/voice_modify/aigc_watermark)，
+        不发送 schema 未定义的字段（如 subtitle_enabled），避免触发 2013 参数错误。
         """
         if not self.api_key:
             return {"success": False, "error": "API Key not configured"}
@@ -193,12 +201,12 @@ class MiniMaxAsyncTTSService:
         vs: dict[str, Any] = dict(voice_setting or {})
         vs["voice_id"] = voice_id
 
+        # payload 严格对照官方 T2AAsyncV2Req schema
         payload: dict[str, Any] = {
             "model": self.model,
             "text": text,
             "voice_setting": vs,
             "aigc_watermark": bool(aigc_watermark),
-            "subtitle_enabled": bool(subtitle_enabled),
         }
         if audio_setting:
             payload["audio_setting"] = audio_setting
@@ -404,7 +412,6 @@ class MiniMaxAsyncTTSService:
         language_boost: Optional[str] = None,
         voice_modify: Optional[dict] = None,
         aigc_watermark: bool = False,
-        subtitle_enabled: bool = False,
     ) -> dict[str, Any]:
         """编排完整三步流程：创建任务 -> 轮询 -> 检索 -> 下载。
 
@@ -436,7 +443,6 @@ class MiniMaxAsyncTTSService:
                 language_boost=language_boost,
                 voice_modify=voice_modify,
                 aigc_watermark=aigc_watermark,
-                subtitle_enabled=subtitle_enabled,
             )
             if "task_id" not in create_result:
                 return {

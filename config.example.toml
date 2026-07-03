@@ -3,37 +3,65 @@ enabled = true
 config_version = "2.0.0"
 
 [voice]
-# MiniMax API 配置
+# ===== MiniMax API 配置 =====
+# MiniMax API Key（必填，Bearer 认证）
 minimax_api_key = ""
+# API 地址（国内: https://api.minimaxi.com，国际: https://api.minimax.io）
 api_base_url = "https://api.minimaxi.com"
+# TTS 模型，可选: speech-2.8-hd / speech-2.8-turbo / speech-2.6-hd / speech-2.6-turbo
+#               / speech-02-hd / speech-02-turbo / speech-01-hd / speech-01-turbo
 model = "speech-2.8-hd"
 
-# 音色配置
+# ===== 音色配置 =====
+# 音色模式: "clone"(音色复刻) 或 "preset"(预置音色)
 voice_mode = "clone"
-preset_voice = "English_expressive_narrator"
+# 预置音色 voice_id（仅 preset 模式生效，如 audiobook_male_1 / English_expressive_narrator）
+preset_voice = "audiobook_male_1"
+# 音色复刻文件目录（相对于插件目录）
 voices_dir = "voices"
+# 默认音色名称（clone 模式下为音频文件名，留空则取第一个）
 default_voice = ""
+# 指定复刻音色文件名（clone 模式下优先使用）
 clone_voice = ""
 
-# 语音参数
+# ===== voice_setting 语音参数 =====
+# 情绪枚举，留空则由模型自动匹配或由 style_instruction 映射
+# 可选: happy / sad / angry / fearful / disgusted / surprised / calm / fluent / whisper
+# 注意: fluent 和 whisper 仅 speech-2.6-turbo / speech-2.6-hd 支持；
+#       speech-2.8-hd / speech-2.8-turbo 不支持 whisper
 emotion = ""
+# 语速 [0.5, 2]，默认 1.0
 speed = 1.0
+# 音量 (0, 10]，默认 1.0
 vol = 1.0
+# 音调 [-12, 12] 整数，0 为原音色，默认 0
 pitch = 0
+# 英文文本归一化（提升数字阅读场景，略增延迟），默认 false
+english_normalization = false
 
-# 音频设置（默认 mp3，NapCat 兼容性最佳）
+# ===== audio_setting 音频设置 =====
+# 音频格式: mp3 / pcm / flac / wav / pcmu_raw / pcmu_wav / opus，默认 mp3（NapCat 兼容性最佳）
 audio_format = "mp3"
+# 采样率 [8000, 16000, 22050, 24000, 32000, 44100]，默认 32000
+# 注意: opus 仅支持 [8000, 12000, 16000, 24000, 48000]
 audio_sample_rate = 32000
+# 比特率 [32000, 64000, 128000, 256000]，默认 128000（仅 mp3 生效）
 bitrate = 128000
+# 声道数 [1, 2]，1 单声道 / 2 双声道，默认 2
 channel = 2
 
-# 语言与水印
+# ===== 顶层参数 =====
+# 语种识别增强: auto 或具体语种(如 Chinese / English / Japanese 等)，留字符串 "auto" 让模型自动判断
 language_boost = "auto"
+# AIGC 水印（在合成音频末尾添加节奏标识，仅非流式生效），默认 false
 aigc_watermark = false
-subtitle_enabled = false
 
-# 轮询与重试参数
+# ===== 客户端轮询与重试参数（非 API 字段，插件行为） =====
+# 轮询间隔(秒)，查询接口限 10 QPS，故 ≥1.0
 poll_interval = 1.0
+# 最大轮询等待时长(秒)
 poll_max_wait = 120
+# 创建任务瞬时错误最大重试次数
 max_retries = 3
+# 重试指数退避基数
 retry_backoff_base = 1.5
