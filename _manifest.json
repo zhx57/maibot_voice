@@ -1,9 +1,9 @@
 {
   "manifest_version": 2,
   "id": "Emilia-awa.maibot-mimotts-voice",
-  "name": "MiMo TTS Voice Clone",
-  "version": "1.6.0",
-  "description": "MiMo TTS Voice Clone Plugin for MaiBot - AI语音回复插件，支持自定义音色克隆和风格控制",
+  "name": "MiniMax Async TTS Voice",
+  "version": "2.0.0",
+  "description": "MiniMax Async TTS Plugin for MaiBot - 基于MiniMax异步语音合成的AI语音回复插件，支持系统音色、音色复刻、情绪控制与风格映射",
   "author": {
     "name": "Emilia-awa",
     "url": "https://github.com/Emilia-awa"

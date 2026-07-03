@@ -1,12 +1,39 @@
 [plugin]
 enabled = true
-config_version = "1.0.0"
+config_version = "2.0.0"
 
 [voice]
-mimo_api_key = ""
-api_base_url = "https://token-plan-cn.xiaomimimo.com/v1"
+# MiniMax API 配置
+minimax_api_key = ""
+api_base_url = "https://api.minimaxi.com"
+model = "speech-2.8-hd"
+
+# 音色配置
 voice_mode = "clone"
-preset_voice = "mimo_default"
+preset_voice = "English_expressive_narrator"
 voices_dir = "voices"
 default_voice = ""
 clone_voice = ""
+
+# 语音参数
+emotion = ""
+speed = 1.0
+vol = 1.0
+pitch = 0
+
+# 音频设置（默认 mp3，NapCat 兼容性最佳）
+audio_format = "mp3"
+audio_sample_rate = 32000
+bitrate = 128000
+channel = 2
+
+# 语言与水印
+language_boost = "auto"
+aigc_watermark = false
+subtitle_enabled = false
+
+# 轮询与重试参数
+poll_interval = 1.0
+poll_max_wait = 120
+max_retries = 3
+retry_backoff_base = 1.5

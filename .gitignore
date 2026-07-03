@@ -1,0 +1,13 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+
+# 用户配置（含密钥，勿提交）
+config.toml
+
+# 音色文件与克隆缓存（用户私有）
+voices/*.wav
+voices/*.mp3
+voices/.voice_cache.json
