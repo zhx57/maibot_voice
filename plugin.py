@@ -330,17 +330,17 @@ class AIVoicePlugin(MaiBotPlugin):
         whisper_supported = model in ("speech-2.6-turbo", "speech-2.6-hd")
         # fluent 仅 speech-2.6-turbo / speech-2.6-hd 支持
         fluent_supported = model in ("speech-2.6-turbo", "speech-2.6-hd")
-        # emotion 映射
+        # emotion 映射（关键词扩展，覆盖 LLM 常用同义词）
         emotion_map = [
-            (["温柔", "安慰", "温暖", "calm", "gentle", "soft"], "calm"),
-            (["俏皮", "活泼", "开心", "快乐", "happy", "cheerful", "lively"], "happy"),
-            (["悲伤", "难过", "sad", "sorrow"], "sad"),
-            (["愤怒", "生气", "angry", "mad"], "angry"),
-            (["害怕", "恐惧", "fear", "afraid"], "fearful"),
-            (["厌恶", "嫌弃", "disgust"], "disgusted"),
-            (["惊讶", "惊喜", "surprise"], "surprised"),
-            (["低语", "耳语", "whisper"], "whisper" if whisper_supported else ""),
-            (["流畅", "自然", "fluent", "natural"], "fluent" if fluent_supported else ""),
+            (["温柔", "安慰", "温暖", "平静", "柔和", "舒缓", "轻柔", "calm", "gentle", "soft", "tender", "mild", "soothing"], "calm"),
+            (["俏皮", "活泼", "开心", "快乐", "高兴", "愉悦", "兴奋", "欢喜", "欣喜", "欢快", "happy", "cheerful", "lively", "joyful", "excited", "delighted"], "happy"),
+            (["悲伤", "难过", "失落", "伤感", "哀伤", "忧郁", "沮丧", "心痛", "sad", "sorrow", "depressed", "melancholy", "down"], "sad"),
+            (["愤怒", "生气", "恼怒", "不满", "气愤", "恼火", "发火", "angry", "mad", "furious", "irritated", "annoyed"], "angry"),
+            (["害怕", "恐惧", "紧张", "焦虑", "惊慌", "不安", "畏惧", "fear", "afraid", "nervous", "anxious", "scared", "terrified"], "fearful"),
+            (["厌恶", "嫌弃", "反感", "鄙视", "恶心", "disgust", "disgusted", "contempt", "repulsed"], "disgusted"),
+            (["惊讶", "惊喜", "意外", "震惊", "吃惊", "错愕", "surprise", "surprised", "astonished", "shocked"], "surprised"),
+            (["低语", "耳语", "悄悄话", "whisper"], "whisper" if whisper_supported else ""),
+            (["流畅", "自然", "平淡", "fluent", "natural"], "fluent" if fluent_supported else ""),
         ]
         for keywords, emo in emotion_map:
             if any(k in text for k in keywords):
@@ -390,8 +390,8 @@ class AIVoicePlugin(MaiBotPlugin):
         try:
             # 风格映射
             emotion, voice_modify = self._map_style(style_instruction)
-            # 配置的 emotion 优先于映射（若用户在配置中显式设置了 emotion）
-            final_emotion = self.config.voice.emotion or emotion
+            # LLM 动态指令优先于配置默认值（配置作 fallback）
+            final_emotion = emotion or self.config.voice.emotion
             # emotion 模型兼容性校验：fluent/whisper 仅 speech-2.6 系列支持
             if final_emotion in ("fluent", "whisper") and self.config.voice.model not in ("speech-2.6-turbo", "speech-2.6-hd"):
                 self.ctx.logger.warning("emotion '%s' not supported by model '%s', dropping (need speech-2.6 series)", final_emotion, self.config.voice.model)
@@ -465,7 +465,7 @@ class AIVoicePlugin(MaiBotPlugin):
             "2. 导演模式（高级）：从角色、场景、指导三个维度全方位刻画表演，适合需要高度拟人化的场景。\n"
             "   示例：'角色：一位温柔的大姐姐，性格体贴温暖，声音甜美有亲和力。"
             "场景：安慰失恋的朋友。指导：语调柔和温暖，气息松弛，偶尔带叹息，语速偏慢，尾音上扬带笑意。'\n"
-            "   示例：'角色：百年门阀的大小姐，声音冷冽有威压，说话语速极慢，每个字都像在舌尖滚过。"
+            "   示例：'角色：百年门阀的大大小姐，声音冷冽有威压，说话语速极慢，每个字都像在舌尖滚过。"
             "场景：在祠堂面对企图带她私奔的男人。指导：实音重且硬，尾音处加入轻微气音透出疲惫。'\n\n"
             "3. 音频标签（在 reply_text 中使用）：在文本任意位置用括号标注语气/情绪/声音动作。\n"
             "   中文全角/半角均可：（紧张）呼……冷静。（叹气）算了。（轻笑）好吧好吧。\n"
@@ -473,7 +473,20 @@ class AIVoicePlugin(MaiBotPlugin):
             "   整段风格标签：在文本开头加（温柔）你好呀~ 或（东北话）哎呀妈呀~ 或（唱歌）歌词...\n"
             "   常用风格标签：开心/悲伤/愤怒/温柔/慵懒/俏皮/磁性/沙哑/甜美/冷漠/严肃/活泼/深沉 等\n"
             "   常用动作标签：叹气/轻笑/哽咽/深呼吸/咳嗽/打哈欠/低语/提高音量 等\n\n"
-            "提示：style_instruction（整体风格）+ reply_text 中的音频标签（句内细节）可同时使用，两者不冲突。"
+            "提示：style_instruction（整体风格）+ reply_text 中的音频标签（句内细节）可同时使用，两者不冲突。\n\n"
+            "【情绪控制 - 重要】style_instruction 中包含特定关键词会触发对应情绪渲染，请根据对话情境主动判断是否使用：\n"
+            "- calm（温和平静）：温柔/安慰/温暖/平静/柔和/舒缓/轻柔 —— 安慰人、温柔说话时用\n"
+            "- happy（高兴）：开心/快乐/高兴/愉悦/兴奋/欢喜/欣喜/欢快/俏皮/活泼 —— 高兴、兴奋、俏皮时用\n"
+            "- sad（悲伤）：悲伤/难过/失落/伤感/哀伤/忧郁/沮丧/心痛 —— 难过、失落、伤感时用\n"
+            "- angry（愤怒）：愤怒/生气/恼怒/不满/气愤/恼火/发火 —— 生气、训斥、不满时用\n"
+            "- fearful（害怕）：害怕/恐惧/紧张/焦虑/惊慌/不安/畏惧 —— 紧张、害怕、焦虑时用\n"
+            "- disgusted（厌恶）：厌恶/嫌弃/反感/鄙视/恶心 —— 嫌弃、反感时用\n"
+            "- surprised（惊讶）：惊讶/惊喜/意外/震惊/吃惊/错愕 —— 惊讶、意外、惊喜时用\n\n"
+            "情绪使用原则：\n"
+            "1. 根据场景判断，不必每次都加情绪。日常平淡对话可不写情绪关键词，让模型自动匹配。\n"
+            "2. 当对话有明显情绪色彩时（安慰、生气、惊讶、开心等），主动在 style_instruction 中包含对应关键词。\n"
+            "3. 可与其他风格描述组合，如'温柔安慰的语气，语速稍慢'（calm 已隐含在'温柔/安慰'）。\n"
+            "4. 情绪关键词写一次即可，无需重复。中文英文均可。"
         ),
         activation_type=ActivationType.ALWAYS,
         parameters=[
