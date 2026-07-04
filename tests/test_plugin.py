@@ -245,6 +245,72 @@ def test_clean_text_preserve_tag_at_boundaries():
 
 
 # ---------------------------------------------------------------------------
+# _clean_text_for_tts: 模型兼容性（仅 speech-2.8 系列保留语气词标签）
+# ---------------------------------------------------------------------------
+
+def test_clean_text_28_hd_preserves_tags():
+    """speech-2.8-hd 支持 19 个原生语气词标签，应保留。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("(laughs)哈哈", model="speech-2.8-hd") == "(laughs)哈哈"
+    assert p._clean_text_for_tts("好累(sighs)", model="speech-2.8-hd") == "好累(sighs)"
+
+
+def test_clean_text_28_turbo_preserves_tags():
+    """speech-2.8-turbo 也支持，应保留。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("(humming)哼唱", model="speech-2.8-turbo") == "(humming)哼唱"
+
+
+@pytest.mark.parametrize("model", [
+    "speech-2.6-hd", "speech-2.6-turbo",
+    "speech-02-hd", "speech-02-turbo",
+    "speech-01-hd", "speech-01-turbo",
+])
+def test_clean_text_non_28_models_strip_tags(model):
+    """非 2.8 系列模型不支持原生语气词标签，应移除（否则会被当文本念出）。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("(laughs)哈哈", model=model) == "哈哈"
+    assert p._clean_text_for_tts("好累(sighs)", model=model) == "好累"
+
+
+def test_clean_text_non_28_model_all_19_tags_stripped():
+    """非 2.8 模型下，全部 19 个语气词标签都应被移除。"""
+    from plugin import MINIMAX_EMOTION_TAGS
+    p = _make_plugin()
+    for tag in MINIMAX_EMOTION_TAGS:
+        text = f"前缀({tag})后缀"
+        cleaned = p._clean_text_for_tts(text, model="speech-2.6-hd")
+        assert f"({tag})" not in cleaned, f"2.6 模型下标签 {tag!r} 应被移除: {cleaned!r}"
+        assert "前缀" in cleaned and "后缀" in cleaned
+
+
+def test_clean_text_non_28_model_chinese_bracket_tag_stripped():
+    """非 2.8 模型下，中文全角括号包裹的语气词标签也应被移除。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("今天（sighs）真累", model="speech-02-hd") == "今天真累"
+
+
+def test_clean_text_non_28_model_mixed_with_stage_direction():
+    """非 2.8 模型下，舞台提示和语气词标签都应被移除。"""
+    p = _make_plugin()
+    text = "（温柔）你好（laughs）真开心"
+    assert p._clean_text_for_tts(text, model="speech-2.6-turbo") == "你好真开心"
+
+
+def test_clean_text_non_28_model_all_tags_only_returns_empty():
+    """非 2.8 模型下，文本全是语气词标签时应返回空。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("(laughs)(sighs)", model="speech-2.6-hd") == ""
+
+
+def test_clean_text_empty_model_defaults_to_preserve():
+    """model 参数为空时默认保留标签（向后兼容，便于无 config 上下文调用）。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("(laughs)哈哈") == "(laughs)哈哈"
+    assert p._clean_text_for_tts("(laughs)哈哈", model="") == "(laughs)哈哈"
+
+
+# ---------------------------------------------------------------------------
 # voice_clone_tts 集成：过滤流程贯穿到 synthesize 调用
 # ---------------------------------------------------------------------------
 

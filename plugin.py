@@ -66,6 +66,12 @@ MINIMAX_EMOTION_TAGS: frozenset[str] = frozenset({
     "hissing", "emm", "sneezes",
 })
 
+# 支持原生语气词标签的模型（仅 speech-2.8 系列）
+# 其他模型（2.6 / 02 / 01）不支持，标签会被当作普通文本朗读，必须移除
+EMOTION_TAG_SUPPORTING_MODELS: frozenset[str] = frozenset({
+    "speech-2.8-hd", "speech-2.8-turbo",
+})
+
 # 匹配中文全角（）和英文半角() 括号内的非嵌套内容
 _TAG_PATTERN = re.compile(r"[（(]([^()（）]*?)[)）]")
 
@@ -330,19 +336,25 @@ class AIVoicePlugin(MaiBotPlugin):
         preset_id = voice_key or self.config.voice.preset_voice or "English_expressive_narrator"
         return preset_id
 
-    def _clean_text_for_tts(self, text: str) -> str:
+    def _clean_text_for_tts(self, text: str, model: str = "") -> str:
         """过滤 reply_text 中的舞台提示/风格标签，100% 保留 MiniMax 原生语气词标签。
 
         规则：
         - 扫描所有中文全角（）和英文半角() 括号内容
-        - 括号内文本 strip 后小写，若在 MINIMAX_EMOTION_TAGS 集合 → 转成英文半角括号保留
-          （MiniMax TTS 引擎会渲染为对应语气/声音动作）
+        - 括号内文本 strip 后小写，若在 MINIMAX_EMOTION_TAGS 集合：
+          - 当 model 属于 speech-2.8 系列 → 转成英文半角括号保留（TTS 引擎会渲染为语气/声音动作）
+          - 当 model 不支持（2.6 / 02 / 01 系列）→ 移除（否则会被当普通文本朗读，如念出"laughs"）
+          - model 为空时默认保留（向后兼容）
         - 否则视为舞台提示/风格标签（如"轻声""困意""东北话"）→ 移除
         - 清理移除后留下的多余空白与孤立标点
         """
+        supports_tags = (not model) or (model in EMOTION_TAG_SUPPORTING_MODELS)
+
         def _replace(m: re.Match) -> str:
             inner = m.group(1).strip()
             if inner.lower() in MINIMAX_EMOTION_TAGS:
+                if not supports_tags:
+                    return ""  # 当前模型不支持语气词标签，移除
                 # 统一转成英文半角括号 + 小写（MiniMax 原生格式）
                 return f"({inner.lower()})"
             return ""  # 舞台提示，移除
@@ -423,8 +435,9 @@ class AIVoicePlugin(MaiBotPlugin):
             return {"success": False, "error": "Empty text"}
 
         # 过滤舞台提示/风格标签，100% 保留 MiniMax 原生语气词标签（如 (laughs)/(sighs)/(humming)）
+        # 注意: 仅 speech-2.8 系列支持原生语气词标签，其他模型会移除标签避免被当文本朗读
         original_len = len(text)
-        text = self._clean_text_for_tts(text)
+        text = self._clean_text_for_tts(text, model=self.config.voice.model)
         if not text.strip():
             return {"success": False, "error": "Text is empty after cleaning stage directions"}
         if len(text) != original_len:
