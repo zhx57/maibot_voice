@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -53,6 +54,20 @@ class VoiceSectionConfig(PluginConfigBase):
 class VoicePluginConfig(PluginConfigBase):
     plugin: PluginSectionConfig = Field(default_factory=PluginSectionConfig)
     voice: VoiceSectionConfig = Field(default_factory=VoiceSectionConfig)
+
+
+# MiniMax 同步 TTS 原生语气词标签（speech-2.8 系列）
+# 来源: 官方 /v1/t2a_v2 OpenAPI -> T2aV2Req.text 字段描述
+# 这些标签会被 TTS 引擎识别为语气/声音动作渲染，必须 100% 保留
+MINIMAX_EMOTION_TAGS: frozenset[str] = frozenset({
+    "laughs", "chuckle", "coughs", "clear-throat", "groans",
+    "breath", "pant", "inhale", "exhale", "gasps", "sniffs",
+    "sighs", "snorts", "burps", "lip-smacking", "humming",
+    "hissing", "emm", "sneezes",
+})
+
+# 匹配中文全角（）和英文半角() 括号内的非嵌套内容
+_TAG_PATTERN = re.compile(r"[（(]([^()（）]*?)[)）]")
 
 
 class AIVoicePlugin(MaiBotPlugin):
@@ -315,6 +330,32 @@ class AIVoicePlugin(MaiBotPlugin):
         preset_id = voice_key or self.config.voice.preset_voice or "English_expressive_narrator"
         return preset_id
 
+    def _clean_text_for_tts(self, text: str) -> str:
+        """过滤 reply_text 中的舞台提示/风格标签，100% 保留 MiniMax 原生语气词标签。
+
+        规则：
+        - 扫描所有中文全角（）和英文半角() 括号内容
+        - 括号内文本 strip 后小写，若在 MINIMAX_EMOTION_TAGS 集合 → 转成英文半角括号保留
+          （MiniMax TTS 引擎会渲染为对应语气/声音动作）
+        - 否则视为舞台提示/风格标签（如"轻声""困意""东北话"）→ 移除
+        - 清理移除后留下的多余空白与孤立标点
+        """
+        def _replace(m: re.Match) -> str:
+            inner = m.group(1).strip()
+            if inner.lower() in MINIMAX_EMOTION_TAGS:
+                # 统一转成英文半角括号 + 小写（MiniMax 原生格式）
+                return f"({inner.lower()})"
+            return ""  # 舞台提示，移除
+
+        cleaned = _TAG_PATTERN.sub(_replace, text)
+        # 清理多余空白
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        # 清理移除后可能留下的孤立标点（如 "，。" "， " " 、"）
+        cleaned = re.sub(r"[，,、]\s*[。.]", "。", cleaned)
+        cleaned = re.sub(r"^[，,、\s]+", "", cleaned)
+        cleaned = re.sub(r"\s+[，,、]+", "，", cleaned)
+        return cleaned
+
     def _map_style(self, style_instruction: str) -> tuple[str, dict]:
         """将 style_instruction 自然语言映射为 (emotion, voice_modify)。
         返回 (emotion字符串可能为空, voice_modify字典)。
@@ -380,6 +421,14 @@ class AIVoicePlugin(MaiBotPlugin):
 
         if not text or not text.strip():
             return {"success": False, "error": "Empty text"}
+
+        # 过滤舞台提示/风格标签，100% 保留 MiniMax 原生语气词标签（如 (laughs)/(sighs)/(humming)）
+        original_len = len(text)
+        text = self._clean_text_for_tts(text)
+        if not text.strip():
+            return {"success": False, "error": "Text is empty after cleaning stage directions"}
+        if len(text) != original_len:
+            self.ctx.logger.info("Cleaned stage directions: %d -> %d chars", original_len, len(text))
 
         voice_id = self._resolve_voice(voice_name)
         if not voice_id:
