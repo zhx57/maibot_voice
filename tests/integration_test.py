@@ -16,19 +16,19 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_end_to_end_synthesis():
-    from tts_service import MiniMaxAsyncTTSService
+    from tts_service import MiniMaxSyncTTSService
 
     api_key = os.environ["MINIMAX_API_KEY"]
-    service = MiniMaxAsyncTTSService(api_key=api_key, model="speech-2.8-hd")
+    service = MiniMaxSyncTTSService(api_key=api_key, model="speech-2.8-hd")
     try:
         result = await service.synthesize(
-            text="你好，这是一段测试语音。",
-            voice_id="English_expressive_narrator",
+            text="你好，这是一段测试语音。今天天气真不错(sighs)，我们一起出去走走吧。",
+            voice_id="female-shaonv-jingpin",
             audio_setting={
                 "format": "mp3",
-                "audio_sample_rate": 32000,
+                "sample_rate": 32000,
                 "bitrate": 128000,
-                "channel": 2,
+                "channel": 1,
             },
             language_boost="auto",
         )
@@ -45,8 +45,8 @@ async def test_end_to_end_synthesis():
             or audio_bytes[:2] == b"\xff\xf3"
             or audio_bytes[:2] == b"\xff\xf2"
         ), f"Invalid mp3 header: {audio_bytes[:4].hex()}"
-        # 验证发送格式一致：base64://<audio_b64>
-        b64_url = f"base64://{audio_b64}"
-        assert b64_url.startswith("base64://")
+        # 打印结果摘要供人工确认
+        print(f"\n[OK] 合成成功，音频大小: {len(audio_bytes)} 字节, base64 长度: {len(audio_b64)}")
+        print(f"[OK] 文件头: {audio_bytes[:4].hex()}")
     finally:
         await service.close()

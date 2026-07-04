@@ -1,6 +1,6 @@
 [plugin]
 enabled = true
-config_version = "2.0.0"
+config_version = "3.0.0"
 
 [voice]
 # ===== MiniMax API 配置 =====
@@ -28,7 +28,7 @@ clone_voice = ""
 # 情绪枚举，留空则由模型自动匹配或由 style_instruction 映射
 # 可选: happy / sad / angry / fearful / disgusted / surprised / calm / fluent / whisper
 # 注意: fluent 和 whisper 仅 speech-2.6-turbo / speech-2.6-hd 支持；
-#       speech-2.8-hd / speech-2.8-turbo 不支持 whisper
+#       speech-2.8-hd / speech-2.8-turbo 不支持 whisper，配置后将自动降级为空
 emotion = ""
 # 语速 [0.5, 2]，默认 1.0
 speed = 1.0
@@ -36,32 +36,34 @@ speed = 1.0
 vol = 1.0
 # 音调 [-12, 12] 整数，0 为原音色，默认 0
 pitch = 0
-# 英文文本归一化（提升数字阅读场景，略增延迟），默认 false
-english_normalization = false
+# 中英文文本归一化（提升数字阅读场景，略增延迟），默认 false
+text_normalization = false
 
 # ===== audio_setting 音频设置 =====
-# 音频格式: mp3 / pcm / flac / wav / pcmu_raw / pcmu_wav / opus，默认 mp3（NapCat 兼容性最佳）
+# 音频格式: mp3 / pcm / flac / wav / pcmu_raw / pcmu_wav / opus，共 7 种，默认 mp3（NapCat 兼容性最佳）
 audio_format = "mp3"
-# 采样率 [8000, 16000, 22050, 24000, 32000, 44100]，默认 32000
-# 注意: opus 仅支持 [8000, 12000, 16000, 24000, 48000]
-audio_sample_rate = 32000
-# 比特率 [32000, 64000, 128000, 256000]，默认 128000（仅 mp3 生效）
+# 采样率 [8000, 16000, 22050, 24000, 32000, 44100]，共 6 档，默认 32000
+# 注意: opus 仅支持 [8000, 12000, 16000, 24000, 48000]，不在上述 6 档内的需单独取值
+sample_rate = 32000
+# 比特率 [32000, 64000, 128000, 256000]，共 4 档，默认 128000（仅 mp3 生效）
 bitrate = 128000
-# 声道数 [1, 2]，1 单声道 / 2 双声道，默认 2
-channel = 2
+# 声道数 [1, 2]，1 单声道（默认，适合语音消息）/ 2 双声道
+channel = 1
 
 # ===== 顶层参数 =====
 # 语种识别增强: auto 或具体语种(如 Chinese / English / Japanese 等)，留字符串 "auto" 让模型自动判断
 language_boost = "auto"
 # AIGC 水印（在合成音频末尾添加节奏标识，仅非流式生效），默认 false
 aigc_watermark = false
+# 是否开启字幕服务（同步接口支持），默认 false
+subtitle_enable = false
+# 字幕粒度: sentence（句级，默认）/ word（词级）/ word_streaming（词级流式）
+subtitle_type = "sentence"
+# 是否朗读 LaTeX 公式（仅中文，开启后 language_boost 强制 Chinese），默认 false
+latex_read = false
 
-# ===== 客户端轮询与重试参数（非 API 字段，插件行为） =====
-# 轮询间隔(秒)，查询接口限 10 QPS，故 ≥1.0
-poll_interval = 1.0
-# 最大轮询等待时长(秒)
-poll_max_wait = 120
-# 创建任务瞬时错误最大重试次数
+# ===== 客户端重试参数（非 API 字段，插件行为） =====
+# 合成请求瞬时错误最大重试次数（如 1001 超时 / 1002 限流 / 1039 TPM限流 / 网络异常）
 max_retries = 3
 # 重试指数退避基数
 retry_backoff_base = 1.5

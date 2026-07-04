@@ -2,8 +2,8 @@
   "manifest_version": 2,
   "id": "Emilia-awa.maibot-mimotts-voice",
   "name": "MiniMax Async TTS Voice",
-  "version": "2.0.0",
-  "description": "MiniMax Async TTS Plugin for MaiBot - 基于MiniMax异步语音合成的AI语音回复插件，支持系统音色、音色复刻、情绪控制与风格映射",
+  "version": "3.0.0",
+  "description": "MiniMax Sync TTS Plugin for MaiBot - 基于MiniMax同步语音合成(/v1/t2a_v2, stream=false)的AI语音回复插件，单次请求返回完整音频，延迟更低，支持系统音色、音色复刻、情绪控制与风格映射",
   "author": {
     "name": "Emilia-awa",
     "url": "https://github.com/Emilia-awa"

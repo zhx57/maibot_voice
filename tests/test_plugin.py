@@ -97,3 +97,52 @@ async def test_send_voice_format():
     p.ctx.send.custom.assert_called_once_with(
         "record", {"file": "base64://dGVzdA=="}, "stream1"
     )
+
+
+# ---------------------------------------------------------------------------
+# voice_clone_tts 集成：mock 服务层 synthesize，断言 _send_voice 收到 base64:// 前缀
+# ---------------------------------------------------------------------------
+
+def _configure_voice(p: AIVoicePlugin) -> None:
+    """对 mock config 注入对齐新配置模型的字段值。"""
+    p.default_voice = ""
+    p.voices = {}
+    p.config.voice.voice_mode = "preset"
+    p.config.voice.preset_voice = "PresetVoice123"
+    p.config.voice.model = "speech-2.8-hd"
+    p.config.voice.emotion = ""
+    p.config.voice.speed = 1.0
+    p.config.voice.vol = 1.0
+    p.config.voice.pitch = 0
+    p.config.voice.text_normalization = False
+    p.config.voice.audio_format = "mp3"
+    p.config.voice.sample_rate = 32000
+    p.config.voice.bitrate = 128000
+    p.config.voice.channel = 1
+    p.config.voice.language_boost = "auto"
+    p.config.voice.aigc_watermark = False
+    p.config.voice.subtitle_enable = False
+    p.config.voice.subtitle_type = "sentence"
+    p.config.voice.latex_read = False
+
+
+async def test_voice_clone_tts_sends_base64_prefix():
+    """mock 服务层 synthesize 返回，断言 voice_clone_tts 调用 _send_voice 时传入 base64:// 前缀。"""
+    p = _make_plugin()
+    _configure_voice(p)
+
+    p.tts_service = MagicMock()
+    p.tts_service.synthesize = AsyncMock(return_value={
+        "success": True,
+        "audio_base64": "dGVzdA==",
+        "format": "mp3",
+        "text": "hi",
+    })
+
+    result = await p.voice_clone_tts(text="hi", stream_id="stream1")
+
+    assert result["success"] is True
+    # _send_voice 应以 base64:// 前缀调用 ctx.send.custom
+    p.ctx.send.custom.assert_called_once_with(
+        "record", {"file": "base64://dGVzdA=="}, "stream1"
+    )

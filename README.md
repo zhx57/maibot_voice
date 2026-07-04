@@ -1,6 +1,6 @@
-# MiniMax Async TTS Voice Plugin for MaiBot
+# MiniMax Sync TTS Voice Plugin for MaiBot
 
-基于 MiniMax 异步语音合成 API 的 AI 语音服务插件，为 MaiBot 提供智能语音回复功能。支持**预置音色**和**音色复刻**两种模式。采用异步任务模型（创建任务→轮询→下载），专为长文本场景优化。
+基于 MiniMax 同步语音合成 API（`POST /v1/t2a_v2`，`stream=false`）的 AI 语音服务插件，为 MaiBot 提供智能语音回复功能。支持**预置音色**和**音色复刻**两种模式。采用单次请求返回完整音频的同步模型，省去创建任务/轮询/检索三步流程，端到端延迟更低。
 
 
 ## 功能特性(好用的话请点个star⭐~)
@@ -10,10 +10,10 @@
 - 🤖 **AI 工具链暴露**：`send_voice_reply` 工具暴露在 AI 工具链中（`activation_type=ALWAYS`），AI 可自主决定何时使用语音回复
 - 🎨 **AI 智能风格控制**：风格指令由 AI 自行决定，支持自然语言风格指令映射为 MiniMax emotion + voice_modify
 - 🎬 **导演模式**：支持从角色、场景、指导三个维度刻画语音表演
-- ⚡ **异步发送**：语音合成和发送异步执行，不阻塞 AI 主循环
+- ⚡ **同步发送**：单次 POST 请求即可返回完整音频，无需轮询，端到端延迟更低
 - 🔧 **自动配置初始化**：首次启动自动生成 config.toml
-- 🛡️ **生产级可靠性**：指数退避重试、限流感知、超时/过期处理、错误分类
-- 📝 **丰富参数**：情绪枚举、语速/音量/音调、音频格式/采样率/比特率、发音字典、音色修改
+- 🛡️ **生产级可靠性**：指数退避重试、限流感知、超时/错误处理、错误分类
+- 📝 **丰富参数**：情绪枚举、语速/音量/音调、音频格式/采样率/比特率、字幕、LaTeX 朗读
 
 ## 安装
 
@@ -43,14 +43,14 @@ pip install pytest pytest-asyncio aioresponses
 ```toml
 [plugin]
 enabled = true
-config_version = "2.0.0"
+config_version = "3.0.0"
 
 [voice]
 minimax_api_key = "your_api_key_here"
 api_base_url = "https://api.minimaxi.com"
 model = "speech-2.8-hd"
 voice_mode = "clone"
-preset_voice = "English_expressive_narrator"
+preset_voice = "audiobook_male_1"
 voices_dir = "voices"
 default_voice = ""
 clone_voice = ""
@@ -75,12 +75,12 @@ clone_voice = ""
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `voice_mode` | 音色模式：`preset` 或 `clone` | `clone` |
-| `preset_voice` | 预置音色 voice_id | `English_expressive_narrator` |
+| `preset_voice` | 预置音色 voice_id | `audiobook_male_1` |
 | `voices_dir` | 音色复刻目录（相对于插件目录） | `voices` |
 | `default_voice` | 默认音色名称 | - |
 | `clone_voice` | 指定复刻音色文件名（留空使用第一个文件） | - |
 
-### 语音参数
+### 语音参数（voice_setting）
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
@@ -88,27 +88,55 @@ clone_voice = ""
 | `speed` | 语速 [0.5, 2] | `1.0` |
 | `vol` | 音量 (0, 10] | `1.0` |
 | `pitch` | 音调 [-12, 12] 整数 | `0` |
-| `english_normalization` | 英文文本归一化 | `false` |
+| `text_normalization` | 中英文文本归一化（提升数字阅读场景，略增延迟） | `false` |
 
-### 音频设置
+### 音频设置（audio_setting）
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `audio_format` | 音频格式：`mp3`/`pcm`/`flac`/`wav`/`pcmu_raw`/`pcmu_wav`/`opus` | `mp3` |
-| `audio_sample_rate` | 采样率 [8000,16000,22050,24000,32000,44100] | `32000` |
+| `audio_format` | 音频格式：`mp3`/`pcm`/`flac`/`wav`/`pcmu_raw`/`pcmu_wav`/`opus`（共 7 种） | `mp3` |
+| `sample_rate` | 采样率 [8000,16000,22050,24000,32000,44100]（opus 另支持 [8000,12000,16000,24000,48000]） | `32000` |
 | `bitrate` | 比特率 [32000,64000,128000,256000]（仅 mp3） | `128000` |
-| `channel` | 声道 [1,2] | `2` |
+| `channel` | 声道 [1,2]（1 单声道，适合语音消息） | `1` |
 
-### 其他
+### 顶层参数与其他
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `language_boost` | 语种识别增强 auto 或具体语种 | `auto` |
 | `aigc_watermark` | AIGC 水印（仅非流式生效） | `false` |
-| `poll_interval` | 轮询间隔（秒，≥1.0） | `1.0` |
-| `poll_max_wait` | 最大轮询等待（秒） | `120` |
-| `max_retries` | 最大重试次数 | `3` |
-| `retry_backoff_base` | 重试退避基数 | `1.5` |
+| `subtitle_enable` | 是否开启字幕服务 | `false` |
+| `subtitle_type` | 字幕粒度：`sentence`/`word`/`word_streaming` | `sentence` |
+| `latex_read` | 朗读 LaTeX 公式（仅中文，开启后 language_boost 强制 Chinese） | `false` |
+| `max_retries` | 瞬时错误最大重试次数（1001 超时 / 1002 限流 / 1039 TPM 限流 / 网络异常） | `3` |
+| `retry_backoff_base` | 重试指数退避基数 | `1.5` |
+
+## 接口流程
+
+同步 TTS 采用单次请求返回完整音频的流程，端到端延迟更低：
+
+1. **POST `/v1/t2a_v2`**（`stream=false`）：一次性提交文本与 voice_setting/audio_setting 参数
+2. **hex 解码**：响应体 `data.audio` 为 hex 编码的音频字节串，解码为二进制
+3. **base64 编码**：将二进制音频 base64 编码后通过 `_send_voice` 发送语音消息
+
+> 同步接口不涉及创建任务、轮询查询、文件检索等步骤。
+>
+> **文本上限**：单次请求文本上限 10000 字符（同步接口限制），超长文本插件会自动截断。
+
+## 错误码
+
+| 错误码 | 含义 | 类型 | 处理 |
+|--------|------|------|------|
+| `0` | 成功 | 成功 | 正常返回音频 |
+| `1001` | 请求超时 | 可重试 | 指数退避重试 |
+| `1002` | QPS 限流 | 可重试 | 指数退避重试 |
+| `1039` | TPM 限流 | 可重试 | 指数退避重试 |
+| `1000` | 未知错误 | 致命 | 抛出异常并记录日志 |
+| `1004` | 鉴权失败 | 致命 | 检查 API Key |
+| `1042` | 非法字符 | 致命 | 检查文本内容 |
+| `2013` | 参数错误 | 致命 | 检查请求参数 |
+
+> 仅 `1001`/`1002`/`1039` 与网络异常会触发指数退避重试；致命错误（`1000`/`1004`/`1042`/`2013`）直接失败并记录日志，不再重试。
 
 ## 支持模型
 
@@ -133,6 +161,8 @@ clone_voice = ""
 2. 将参考音频文件放入 `voices/` 目录（支持 WAV 和 MP3）
 3. 插件自动上传并注册为 MiniMax 克隆音色，缓存 voice_id 复用，无需每次传输参考音频
 4. 文件名即为音色名称，建议录音时长 30 秒以上
+
+> 音色克隆接口不变：`POST /v1/files/upload` 上传参考音频 → `POST /v1/voice_clone` 注册克隆音色 → 缓存 voice_id 复用。
 
 ```
 plugins/maibot-mimotts-voice/voices/
@@ -189,7 +219,7 @@ AI 在文本任意位置用括号标注语气/情绪/声音动作：
 ```
 maibot-mimotts-voice/
 ├── plugin.py           # 插件主入口
-├── tts_service.py      # MiniMax 异步 TTS 服务 + 音色复刻管理
+├── tts_service.py      # MiniMax 同步 TTS 服务 + 音色复刻管理
 ├── config.toml         # 插件配置（gitignored）
 ├── config.example.toml # 配置示例
 ├── _manifest.json      # 插件清单
@@ -211,11 +241,24 @@ maibot-mimotts-voice/
 1. **API Key**：需在 [MiniMax 开放平台](https://platform.minimaxi.com) 申请，个人/企业认证后可用
 2. **音色复刻权限**：需完成认证，否则 voice_clone 返回 2038 错误
 3. **克隆音色保活**：复刻音色若 7 天内未调用 TTS 接口会被自动删除，请定期使用
-4. **下载有效期**：异步任务完成后，音频下载 URL 有效期 9 小时（32400 秒），插件会立即下载
+4. **文本上限**：同步接口单次请求文本上限 10000 字符，超长自动截断
 5. **音频格式**：默认 mp3，NapCat 兼容性最佳；voice_modify 仅支持 mp3/wav/flac
 6. **费用**：按字符计费，详见 MiniMax 定价
 
 ## 更新日志
+
+### v3.0.0
+
+- 🔄 **后端切换**：从 MiniMax 异步语音合成 API 整体迁移至同步 TTS 接口（`POST /v1/t2a_v2`，`stream=false`）
+- ⚡ **延迟优化**：单次请求返回完整音频，省去创建任务/轮询/检索三步流程，端到端延迟更低
+- 🔧 **BREAKING 配置变更**（旧配置需迁移）：
+  - `english_normalization` → `text_normalization`
+  - `audio_sample_rate` → `sample_rate`
+  - 移除 `poll_interval`、`poll_max_wait`（同步接口无需轮询）
+- ➕ **新增参数**：`subtitle_enable`、`subtitle_type`、`latex_read`
+- 🔁 **默认值变更**：`channel` 默认值由 `2` 改为 `1`（更适合语音消息）
+- 📝 **文本上限**：10000 字符（同步接口限制），超长自动截断
+- 🛡️ **错误码更新**：对齐同步接口错误码集合（1000/1001/1002/1004/1039/1042/2013）
 
 ### v2.0.0
 

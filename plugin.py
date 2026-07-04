@@ -11,15 +11,15 @@ from maibot_sdk import API, CONFIG_RELOAD_SCOPE_SELF, MaiBotPlugin, Tool, Field,
 from maibot_sdk.types import ActivationType, ToolParameterInfo, ToolParamType
 
 try:
-    from .tts_service import MiniMaxAsyncTTSService, VoiceCloneManager, generate_voice_id_from_filename
+    from .tts_service import MiniMaxSyncTTSService, VoiceCloneManager, generate_voice_id_from_filename
 except ImportError:
-    from tts_service import MiniMaxAsyncTTSService, VoiceCloneManager, generate_voice_id_from_filename
+    from tts_service import MiniMaxSyncTTSService, VoiceCloneManager, generate_voice_id_from_filename
 
 
 class PluginSectionConfig(PluginConfigBase):
     __ui_label__ = "插件"
     enabled: bool = Field(default=True, description="是否启用")
-    config_version: str = Field(default="2.0.0", description="配置版本")
+    config_version: str = Field(default="3.0.0", description="配置版本")
 
 
 class VoiceSectionConfig(PluginConfigBase):
@@ -36,15 +36,16 @@ class VoiceSectionConfig(PluginConfigBase):
     speed: float = Field(default=1.0, description="语速 [0.5, 2]")
     vol: float = Field(default=1.0, description="音量 (0, 10]")
     pitch: int = Field(default=0, description="音调 [-12, 12] 整数，0 为原音色")
-    english_normalization: bool = Field(default=False, description="英文文本归一化（提升数字阅读，略增延迟）")
+    text_normalization: bool = Field(default=False, description="中英文文本归一化")
     audio_format: str = Field(default="mp3", description="音频格式: mp3/pcm/flac/wav/pcmu_raw/pcmu_wav/opus")
-    audio_sample_rate: int = Field(default=32000, description="采样率 [8000,16000,22050,24000,32000,44100]")
+    sample_rate: int = Field(default=32000, description="采样率 [8000,16000,22050,24000,32000,44100]")
     bitrate: int = Field(default=128000, description="比特率 [32000,64000,128000,256000]，仅 mp3 生效")
-    channel: int = Field(default=2, description="声道 [1,2]，1 单声道/2 双声道")
+    channel: int = Field(default=1, description="声道 [1,2]，1 单声道（默认，适合语音消息）/2 双声道")
     language_boost: str = Field(default="auto", description="语种识别增强 auto 或具体语种")
     aigc_watermark: bool = Field(default=False, description="AIGC 水印（仅非流式生效）")
-    poll_interval: float = Field(default=1.0, description="轮询间隔(秒)")
-    poll_max_wait: float = Field(default=120, description="最大轮询等待时长(秒)")
+    subtitle_enable: bool = Field(default=False, description="是否开启字幕服务")
+    subtitle_type: str = Field(default="sentence", description="字幕粒度: sentence/word/word_streaming")
+    latex_read: bool = Field(default=False, description="是否朗读 LaTeX 公式（仅中文，开启后 language_boost 强制 Chinese）")
     max_retries: int = Field(default=3, description="最大重试次数")
     retry_backoff_base: float = Field(default=1.5, description="重试退避基数")
 
@@ -59,7 +60,7 @@ class AIVoicePlugin(MaiBotPlugin):
 
     def __init__(self) -> None:
         super().__init__()
-        self.tts_service: Optional[MiniMaxAsyncTTSService] = None
+        self.tts_service: Optional[MiniMaxSyncTTSService] = None
         self.voice_clone_mgr: Optional[VoiceCloneManager] = None
         self.voices: dict[str, str] = {}
         self.default_voice: str = ""
@@ -72,12 +73,10 @@ class AIVoicePlugin(MaiBotPlugin):
         if not api_key:
             self.ctx.logger.warning("MiniMax API Key not configured, TTS will be disabled")
         else:
-            self.tts_service = MiniMaxAsyncTTSService(
+            self.tts_service = MiniMaxSyncTTSService(
                 api_key=api_key,
                 api_base_url=self.config.voice.api_base_url,
                 model=self.config.voice.model,
-                poll_interval=self.config.voice.poll_interval,
-                poll_max_wait=self.config.voice.poll_max_wait,
                 max_retries=self.config.voice.max_retries,
                 retry_backoff_base=self.config.voice.retry_backoff_base,
                 logger=self.ctx.logger,
@@ -136,12 +135,10 @@ class AIVoicePlugin(MaiBotPlugin):
                     self.tts_service.update_api_base_url(api_base_url)
                     self.tts_service.update_model(model)
                 else:
-                    self.tts_service = MiniMaxAsyncTTSService(
+                    self.tts_service = MiniMaxSyncTTSService(
                         api_key=api_key,
                         api_base_url=api_base_url,
                         model=model,
-                        poll_interval=self.config.voice.poll_interval,
-                        poll_max_wait=self.config.voice.poll_max_wait,
                         max_retries=self.config.voice.max_retries,
                         retry_backoff_base=self.config.voice.retry_backoff_base,
                         logger=self.ctx.logger,
@@ -399,7 +396,7 @@ class AIVoicePlugin(MaiBotPlugin):
             if final_emotion in ("fluent", "whisper") and self.config.voice.model not in ("speech-2.6-turbo", "speech-2.6-hd"):
                 self.ctx.logger.warning("emotion '%s' not supported by model '%s', dropping (need speech-2.6 series)", final_emotion, self.config.voice.model)
                 final_emotion = ""
-            # 组装 voice_setting（对照官方 T2AAsyncV2VoiceSetting）
+            # 组装 voice_setting（对照官方 T2aV2VoiceSetting）
             voice_setting: dict[str, Any] = {
                 "voice_id": voice_id,
                 "speed": self.config.voice.speed,
@@ -408,11 +405,11 @@ class AIVoicePlugin(MaiBotPlugin):
             }
             if final_emotion:
                 voice_setting["emotion"] = final_emotion
-            if self.config.voice.english_normalization:
-                voice_setting["english_normalization"] = True
-            # 组装 audio_setting（对照官方 T2AAsyncV2AudioSetting）
+            if self.config.voice.text_normalization:
+                voice_setting["text_normalization"] = True
+            # 组装 audio_setting（对照官方 T2aV2AudioSetting）
             audio_setting: dict[str, Any] = {
-                "audio_sample_rate": self.config.voice.audio_sample_rate,
+                "sample_rate": self.config.voice.sample_rate,
                 "bitrate": self.config.voice.bitrate,
                 "format": self.config.voice.audio_format,
                 "channel": self.config.voice.channel,
@@ -429,6 +426,9 @@ class AIVoicePlugin(MaiBotPlugin):
                 language_boost=self.config.voice.language_boost or None,
                 voice_modify=voice_modify or None,
                 aigc_watermark=self.config.voice.aigc_watermark,
+                subtitle_enable=self.config.voice.subtitle_enable,
+                subtitle_type=self.config.voice.subtitle_type,
+                latex_read=self.config.voice.latex_read,
             )
             success = result.get("success")
             error = result.get("error", "")
