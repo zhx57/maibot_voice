@@ -75,6 +75,14 @@ EMOTION_TAG_SUPPORTING_MODELS: frozenset[str] = frozenset({
 # 匹配中文全角（）和英文半角() 括号内的非嵌套内容
 _TAG_PATTERN = re.compile(r"[（(]([^()（）]*?)[)）]")
 
+# 匹配 XML/HTML 标签字面化残留（LLM 把 Tool 调用标签泄漏到正文）
+# 例: "<reply_text>" / "</reply_text>" / "小于reply text>parameter" / "小于reply_text大于"
+# 要求标签名以英文字母开头，避免误伤 "3小于4" "你小于我大于他" 等正常中文
+_TAG_LITERAL_PATTERN = re.compile(
+    r"(?:小于|<)\s*/?\s*[a-zA-Z][\w\s_.-]*?\s*(?:>|大于)"
+    r"(?:\s*parameter)?"
+)
+
 
 class AIVoicePlugin(MaiBotPlugin):
     config_model = VoicePluginConfig
@@ -340,6 +348,8 @@ class AIVoicePlugin(MaiBotPlugin):
         """过滤 reply_text 中的舞台提示/风格标签，100% 保留 MiniMax 原生语气词标签。
 
         规则：
+        - 先移除 XML/HTML 标签字面化残留（如 "<reply_text>" / "小于reply text>parameter"）
+          这类是 LLM 把 Tool 调用标签泄漏到正文，必须移除避免被念出
         - 扫描所有中文全角（）和英文半角() 括号内容
         - 括号内文本 strip 后小写，若在 MINIMAX_EMOTION_TAGS 集合：
           - 当 model 属于 speech-2.8 系列 → 转成英文半角括号保留（TTS 引擎会渲染为语气/声音动作）
@@ -348,6 +358,9 @@ class AIVoicePlugin(MaiBotPlugin):
         - 否则视为舞台提示/风格标签（如"轻声""困意""东北话"）→ 移除
         - 清理移除后留下的多余空白与孤立标点
         """
+        # 1. 移除标签字面化残留（LLM 泄漏的 Tool 调用标签）
+        text = _TAG_LITERAL_PATTERN.sub("", text)
+
         supports_tags = (not model) or (model in EMOTION_TAG_SUPPORTING_MODELS)
 
         def _replace(m: re.Match) -> str:

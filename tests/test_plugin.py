@@ -311,6 +311,63 @@ def test_clean_text_empty_model_defaults_to_preserve():
 
 
 # ---------------------------------------------------------------------------
+# _clean_text_for_tts: 标签字面化残留过滤（LLM 泄漏的 Tool 调用标签）
+# ---------------------------------------------------------------------------
+
+def test_clean_text_strips_tag_literal_chinese_desc():
+    """LLM 把 <reply_text> 字面化为"小于reply text>parameter"，应被移除。"""
+    p = _make_plugin()
+    text = "就是想看我害羞小于reply text>parameter，那么MS一点"
+    assert p._clean_text_for_tts(text) == "就是想看我害羞，那么MS一点"
+
+
+def test_clean_text_strips_angle_bracket_tag():
+    """<reply_text> 形式的标签残留应被移除，保留中间正文。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("<reply_text>你好") == "你好"
+    assert p._clean_text_for_tts("你好</reply_text>") == "你好"
+    assert p._clean_text_for_tts("<reply_text>你好</reply_text>") == "你好"
+
+
+def test_clean_text_strips_tag_with_parameter():
+    """标签后紧跟 parameter 残留应一并移除。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("前文<reply_text>parameter后文") == "前文后文"
+
+
+def test_clean_text_strips_chinese_desc_tag_full():
+    """全中文化描述"小于reply_text大于"也应被移除。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("前文小于reply_text大于后文") == "前文后文"
+
+
+def test_clean_text_preserves_normal_xiaoyu_comparison():
+    """正常中文"3小于4"中"小于"是比较运算符，不应被移除。"""
+    p = _make_plugin()
+    assert p._clean_text_for_tts("3小于4") == "3小于4"
+    assert p._clean_text_for_tts("你小于我大于他") == "你小于我大于他"
+
+
+def test_clean_text_strips_tag_literal_with_emotion_tag_preserved():
+    """标签字面化过滤与语气词标签保留应协同工作。"""
+    p = _make_plugin()
+    text = "<reply_text>今天天气真好(laughs)</reply_text>"
+    assert p._clean_text_for_tts(text) == "今天天气真好(laughs)"
+
+
+def test_clean_text_strips_tag_literal_real_case():
+    """用户反馈的真实 case：完整 reply_text 含标签字面化残留。"""
+    p = _make_plugin()
+    text = "嗯，老公，你一直问人家都说了，晚上就知道了嘛，你是不是故意的呀？就是想看我害羞小于reply text>parameter，那么MS一点，你喝3377。"
+    cleaned = p._clean_text_for_tts(text)
+    assert "小于reply text" not in cleaned
+    assert "parameter" not in cleaned
+    # 正常正文保留
+    assert "嗯，老公" in cleaned
+    assert "你喝3377。" in cleaned  # 数字串保留（用户未要求过滤）
+
+
+# ---------------------------------------------------------------------------
 # voice_clone_tts 集成：过滤流程贯穿到 synthesize 调用
 # ---------------------------------------------------------------------------
 
